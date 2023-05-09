@@ -1,8 +1,12 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
     kotlin("jvm") version "1.8.0"
+    kotlin("plugin.serialization") version "1.8.10"
+    application
 }
 
-group = "org.example"
+group = "com.example"
 version = "1.0-SNAPSHOT"
 
 repositories {
@@ -17,10 +21,20 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-cli:0.3.5")
 }
 
-tasks.test {
-    useJUnitPlatform()
+tasks.withType<KotlinCompile> {
+    kotlinOptions.jvmTarget = "1.8"
 }
 
-kotlin {
-    jvmToolchain(8)
+application {
+    mainClass.set("Main")
+}
+
+tasks.jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from (
+        configurations.runtimeClasspath.get().filter { it.name.endsWith("jar") }.map { zipTree(it) }
+    )
+    manifest {
+        attributes["Main-Class"] = "com.example.Main"
+    }
 }
