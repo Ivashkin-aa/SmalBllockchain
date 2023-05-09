@@ -1,0 +1,23 @@
+version: "3"
+services:
+  first-node:
+    image: node
+    container_name: first-node
+    network_mode: host
+    command: java -jar /node/build/libs/SmallBlockchain-1.0.0.jar -a 127.0.0.1:11116 -o 127.0.0.1:11117,127.0.0.1:11118
+    ports:
+      - "11116:11116"
+  second-node:
+    image: node
+    container_name: second-node
+    network_mode: host
+    command: java -jar /node/build/libs/SmallBlockchain-1.0.0.jar -a 127.0.0.1:11117 -o 127.0.0.1:11116,127.0.0.1:11118
+    ports:
+      - "11117:11117"
+  third-node:
+    image: node
+    container_name: third-node
+    network_mode: host
+    command: java -jar /node/build/libs/SmallBlockchain-1.0.0.jar -a 127.0.0.1:11118 -o 127.0.0.1:11117,127.0.0.1:11116 -f
+    ports:
+      - "11118:11118"
