@@ -35,6 +35,6 @@ tasks.jar {
         configurations.runtimeClasspath.get().filter { it.name.endsWith("jar") }.map { zipTree(it) }
     )
     manifest {
-        attributes["Main-Class"] = "com.example.Main"
+        attributes["Main-Class"] = "com.example.MainKt"
     }
 }
