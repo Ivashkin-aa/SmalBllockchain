@@ -1,8 +1,8 @@
 package com.example
 
 import io.ktor.network.sockets.*
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 suspend fun main(args: Array<String>) {
     val config = config()
@@ -10,7 +10,7 @@ suspend fun main(args: Array<String>) {
     val nodes = config.second.split(",").map { it.parseSocketAddress() }
     node.notifyAboutOtherNodes(nodes)
 
-    coroutineScope {
+    runBlocking {
         launch { node.start(config.third) }
     }
 }
