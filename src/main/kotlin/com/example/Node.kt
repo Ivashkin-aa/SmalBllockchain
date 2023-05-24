@@ -5,26 +5,26 @@ import com.example.data.model.Message
 import com.example.data.model.MessageType
 import com.example.utils.receiveMessage
 import com.example.utils.sendMessage
-import kotlinx.coroutines.*
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
-import kotlinx.coroutines.internal.synchronized
+import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.*
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 
-class Node(private val inAddress: SocketAddress) {
-
+class Node(
+    val inboundAddress: SocketAddress
+) {
     private val nodeId = UUID.randomUUID()
-    private val otherNodes = mutableListOf<SocketAddress>()
+    internal val otherNodes = mutableListOf<SocketAddress>()
     private val currentBlock = AtomicReference<Block>()
-    private val blocks = mutableSetOf<Block>()
+    internal val blocks = mutableListOf<Block>()
     private val mutex = Mutex()
 
-    suspend fun start(isStarted: Boolean) = coroutineScope {
-        if (isStarted) {
-            val firstBlock = Block.createBlock(null)
+    suspend fun start(startGeneration: Boolean) = coroutineScope {
+        if (startGeneration) {
+            val firstBlock = Block.new(null)
             processBlock(firstBlock, updateCurrent = true, isGenerated = true)
         }
 
@@ -32,58 +32,49 @@ class Node(private val inAddress: SocketAddress) {
         processInboundMessages()
     }
 
-    fun notifyAboutOtherNodes(nodes: List<SocketAddress>) {
-        otherNodes.addAll(nodes - this.inAddress)
-    }
-
-    private suspend fun processBlock(block: Block, updateCurrent: Boolean, isGenerated: Boolean) {
-
-        if (updateCurrent) currentBlock.set(block)
-
-        updateBlock(block)
-
-        mutex.withLock {
-            if (!blocks.contains(block)) blocks.add(block)
-        }
+    fun notifyAboutOtherNodes(nodes: Collection<SocketAddress>) {
+        otherNodes.addAll(nodes - this.inboundAddress)
     }
 
     private fun CoroutineScope.generateBlocks() = launch(Dispatchers.IO) {
         while (isActive) {
-            val oldBlock = currentBlock.get()
-            if (oldBlock != null) {
-                val block = Block.createBlock(oldBlock.index, oldBlock.hash)
-                val newBlock = getNewBlock()
+            val frozenCurrentBlock = currentBlock.get()
+            if (frozenCurrentBlock != null) {
+                val producedBlock = Block.new(frozenCurrentBlock)
+                val theNewestBlock = findTheNewestBlock()
 
-                if (oldBlock != newBlock) {
-                    processBlock(newBlock, updateCurrent = true, isGenerated = false)
+                if (frozenCurrentBlock != theNewestBlock ||
+                    !currentBlock.compareAndSet(frozenCurrentBlock, producedBlock)
+                ) {
+                    processBlock(theNewestBlock, updateCurrent = true, isGenerated = false)
                 } else {
-                    processBlock(block, updateCurrent = false, isGenerated = true)
+                    processBlock(producedBlock, updateCurrent = false, isGenerated = true)
                 }
             }
         }
     }
 
-    private suspend fun processInboundMessages() = coroutineScope {
+    private fun CoroutineScope.processInboundMessages() {
         launch(Dispatchers.IO) {
             val serverSocket = aSocket(SelectorManager(Dispatchers.IO))
-                .tcp().bind(inAddress)
+                .tcp().bind(inboundAddress)
 
             while (isActive) {
                 val socket = serverSocket.accept()
 
                 val receivedMessage = socket.openReadChannel().receiveMessage()
 
-                when (receivedMessage.type) {
-                    MessageType.UPD_BLOCK -> {
-                        val oldBlock = currentBlock.get()
+                when (receivedMessage.messageType) {
+                    MessageType.UPDATE_BLOCK -> {
+                        val frozenCurrentBlock = currentBlock.get()
                         val receivedBlock = receivedMessage.block!!
-                        if (oldBlock != null) {
-                            if (receivedBlock.index - oldBlock.index == 1 &&
-                                oldBlock.hash == receivedBlock.prevHash
+                        if (frozenCurrentBlock != null) {
+                            if (receivedBlock.index - frozenCurrentBlock.index == 1 &&
+                                frozenCurrentBlock.hash == receivedBlock.previousHash
                             ) {
-                                val isSet = currentBlock.compareAndSet(oldBlock, receivedBlock)
+                                val isSet = currentBlock.compareAndSet(frozenCurrentBlock, receivedBlock)
                                 processBlock(
-                                    if (isSet) receivedBlock else getNewBlock(),
+                                    if (isSet) receivedBlock else findTheNewestBlock(),
                                     updateCurrent = !isSet,
                                     isGenerated = false
                                 )
@@ -101,15 +92,26 @@ class Node(private val inAddress: SocketAddress) {
                         }
                     }
 
-                    else -> {}
+                    MessageType.RESPONSE_BLOCK -> {}
                 }
             }
         }
     }
 
-    private suspend fun updateBlock(block: Block) {
+    private suspend fun processBlock(block: Block, updateCurrent: Boolean, isGenerated: Boolean) {
+
+        if (updateCurrent) currentBlock.set(block)
+
+        updateBlockAtOtherNodes(block)
+
+        mutex.withLock {
+            if (!blocks.contains(block)) blocks.add(block)
+        }
+    }
+
+    private suspend fun updateBlockAtOtherNodes(producedBlock: Block) {
         val selectorManager = SelectorManager(Dispatchers.IO)
-        val message = Message(MessageType.UPD_BLOCK, nodeId.toString(), block)
+        val message = Message(MessageType.UPDATE_BLOCK, nodeId.toString(), producedBlock)
 
         otherNodes.forEach {
             aSocket(selectorManager)
@@ -120,7 +122,7 @@ class Node(private val inAddress: SocketAddress) {
         }
     }
 
-    private suspend fun getNewBlock(): Block {
+    private suspend fun findTheNewestBlock(): Block {
         val frozenCurrentBlock = currentBlock
         otherNodes.forEach {
             val block = requestBlockFrom(it)
@@ -147,4 +149,3 @@ class Node(private val inAddress: SocketAddress) {
             .receiveMessage().block
     }
 }
-

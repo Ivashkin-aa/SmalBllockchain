@@ -19,3 +19,7 @@ suspend fun ByteReadChannel.receiveMessage(): Message {
     readFully(byteArray)
     return Json.decodeFromString(String(byteArray, StandardCharsets.UTF_8))
 }
+
+typealias ChangeNonce = (Int) -> Int
+
+val increment: ChangeNonce = { it + 1 }

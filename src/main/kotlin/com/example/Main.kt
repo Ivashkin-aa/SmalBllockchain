@@ -1,17 +1,16 @@
 package com.example
 
 import io.ktor.network.sockets.*
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
-suspend fun main(args: Array<String>) {
+fun main(args: Array<String>) {
     val config = config()
     val node = Node(config.first.parseSocketAddress())
     val nodes = config.second.split(",").map { it.parseSocketAddress() }
     node.notifyAboutOtherNodes(nodes)
 
     runBlocking {
-        launch { node.start(config.third) }
+        node.start(config.third)
     }
 }
 
