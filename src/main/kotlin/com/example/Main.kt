@@ -1,19 +1,17 @@
 package com.example
 
 import io.ktor.network.sockets.*
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
-@OptIn(DelicateCoroutinesApi::class)
-fun main(args: Array<String>) {
-   val config = config()
+suspend fun main(args: Array<String>) {
+    val config = config()
     val node = Node(config.first.parseSocketAddress())
     val nodes = config.second.split(",").map { it.parseSocketAddress() }
     node.notifyAboutOtherNodes(nodes)
 
-    GlobalScope.launch {
-        node.start(config.third)
+    coroutineScope {
+        launch { node.start(config.third) }
     }
 }
 
